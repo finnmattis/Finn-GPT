@@ -2,12 +2,9 @@ import pandas as pd
 
 def get_most_frequent_pair(tokens):
     pairs = {}
-    for i in range(len(tokens) - 1):
-        pair = (tokens[i], tokens[i + 1])
-        if pair in pairs:
-            pairs[pair] += 1
-        else:
-            pairs[pair] = 1
+    for char1, char2 in zip(tokens, tokens[1:]):
+        pair = (char1, char2)
+        pairs[pair] = pairs.get(pair, 0) + 1
 
     return max(pairs, key=pairs.get) if pairs else None
 
