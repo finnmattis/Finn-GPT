@@ -1,3 +1,4 @@
+import re
 import pandas as pd
 
 class Tokenizer:
@@ -5,6 +6,15 @@ class Tokenizer:
         self.__trained = False
         self.__merges = []
         self.vocab = {}
+
+    def pretokenize(self, text):
+        text = text.lower() # all lowercase
+        text = re.sub(r'[^a-z0-9\s.?!]', '', text) # remove weird unicode
+        text = re.sub(r'\s+', ' ', text) # collapse whitespace
+        text = re.sub(r'([.?!])', r' \1 ', text) # add space around ".", "?", "!"
+        text.rstrip()
+        text = ["<start>"] + list(text) + ["<end>"]
+        return text
 
     def __get_most_frequent_pair(self, tokens):
         pairs = {}
@@ -14,14 +24,22 @@ class Tokenizer:
 
         return max(pairs, key=pairs.get) if pairs else None
 
+    def __tokens_to_nums(self, tokens):
+        vocab_list = sorted(list(self.vocab))
+        token_nums = []
+        for token in tokens:
+            token_nums.append(vocab_list.index(token))
+        return token_nums
+
     def train(self, texts, num_merges=1000):
         if self.__trained:
             raise RuntimeError("Already trained!")
 
-        tokens_list = [["<start>"] + list(text) + ["<end>"] for text in texts]
+        tokens_list = [self.pretokenize(text) for text in texts]
         tokens = [token for tokens_sublist in tokens_list for token in tokens_sublist]
         self.vocab = {token: 1 for token in tokens}
-
+        
+        # merge most common pair for vocab num_merges times
         for _ in range(num_merges):
             pair = self.__get_most_frequent_pair(tokens)
             if not pair:
@@ -32,6 +50,7 @@ class Tokenizer:
             
             updated_tokens = []
             skip_next = False
+            # replace pair with new char
             for token1, token2 in zip(tokens, tokens[1:]):
                 if skip_next:
                     skip_next = False
@@ -45,14 +64,16 @@ class Tokenizer:
 
             if not skip_next:
                 updated_tokens.append(tokens[-1])
-
             tokens = updated_tokens
+
+            # add to vocab
             self.vocab[token_new] = 1
 
         self.__trained = True
+        return self.__tokens_to_nums(tokens)
 
     def encode(self, text):
-        tokens = list(text)
+        tokens = self.pretokenize(text)
 
         for merge in self.__merges:
             new_tokens = []
@@ -67,12 +88,4 @@ class Tokenizer:
                     i += 1
             tokens = new_tokens
 
-        return tokens
-
-mytok = Tokenizer()
-
-df = pd.read_json("data.json")
-mytok.train(list(df["question"]), 100)
-
-novel_text = "Who died today?"
-print(mytok.encode(novel_text))
+        return self.__tokens_to_nums(tokens)
