@@ -5,7 +5,7 @@ class Tokenizer:
     def __init__(self):
         self.__trained = False
         self.__merges = []
-        self.vocab = {}
+        self.vocab = []
 
     def pretokenize(self, text):
         text = text.lower() # all lowercase
@@ -25,22 +25,21 @@ class Tokenizer:
         return max(pairs, key=pairs.get) if pairs else None
 
     def __tokens_to_nums(self, tokens):
-        vocab_list = sorted(list(self.vocab))
         token_nums = []
         for token in tokens:
-            token_nums.append(vocab_list.index(token))
+            token_nums.append(self.vocab.index(token))
         return token_nums
 
-    def train(self, texts, num_merges=1000):
+    def train(self, texts, vocab_size=1000):
         if self.__trained:
             raise RuntimeError("Already trained!")
 
         tokens_list = [self.pretokenize(text) for text in texts]
         tokens = [token for tokens_sublist in tokens_list for token in tokens_sublist]
-        self.vocab = {token: 1 for token in tokens}
+        self.vocab = list(set([token for token in tokens]))
         
         # merge most common pair for vocab num_merges times
-        for _ in range(num_merges):
+        for _ in range(vocab_size - len(self.vocab)):
             pair = self.__get_most_frequent_pair(tokens)
             if not pair:
                 break
@@ -67,8 +66,9 @@ class Tokenizer:
             tokens = updated_tokens
 
             # add to vocab
-            self.vocab[token_new] = 1
+            self.vocab.append(token_new)
 
+        self.vocab = sorted(self.vocab)
         self.__trained = True
         return self.__tokens_to_nums(tokens)
 
@@ -89,3 +89,9 @@ class Tokenizer:
             tokens = new_tokens
 
         return self.__tokens_to_nums(tokens)
+
+    def decode(self, encoded_text):
+        decoded = []
+        for token in encoded_text:
+            decoded.append(self.vocab[token])
+        return "".join(decoded)
