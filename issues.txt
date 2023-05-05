@@ -1,0 +1,13 @@
+questions and annotations need to tokenized in Tokenizer.train() that way vocab works and merges are as efficient as possible - lists need to be returned seperately
+
+alternative - train on both and then later use Tokenizer.encode() - less efficient
+
+the questions are going to be fed into the encoder to get cross attention
+then decoder does its thing
+the annotations are the targets for the decoded
+
+new classes:
+SelfAttention (accessed by next to classes)
+EncoderSelfAttention
+DecoderSelf Attention (utilizes masking)
+Cross Attention

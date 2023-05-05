@@ -23,17 +23,27 @@ dropout = 0.2
 
 # read from json
 df = pd.read_json("data.json")
+df = df[[x[0].get('type') == 'singleAnswer' for x in df['annotations']]]
 questions = df["question"]
+annotations = df["annotations"].apply(lambda x: x[0]["answer"][0])
 
 # BPE encoding
 t = Tokenizer()
-tokens = t.train(questions, vocab_size)
-data = torch.tensor(tokens, dtype=torch.long)
+encoded_corpus = t.train([questions, annotations], vocab_size)
+
+q_toks = encoded_corpus[0]
+a_toks = encoded_corpus[1]
+q_data = [torch.tensor(tokens, dtype=torch.long) for tokens in q_toks]
+a_data = [torch.tensor(tokens, dtype=torch.long) for tokens in a_toks]
 
 # train/test split
-n = int(train_percent*len(data))
-train_data = data[:n]
-test_data = data[n:]
+q_percent = int(train_percent * len(q_data))
+a_percent = int(train_percent * len(a_data))
+
+q_train = q_data[:q_percent]
+a_train = a_data[:a_percent]
+q_test = q_data[:q_percent]
+a_test = a_data[:a_percent]
 
 # estimate loss
 @torch.no_grad()
@@ -50,42 +60,45 @@ def estimate_loss():
     model.train()
     return out
 
-
 # data loading
 def get_batch(split):
     # generate a small batch of data of inputs x and targets y
-    data = train_data if split == 'train' else train_data
-    ix = torch.randint(len(data) - block_size, (batch_size,))
-    x = torch.stack([data[i:i+block_size] for i in ix])
-    y = torch.stack([data[i+1:i+block_size+1] for i in ix])
+    questions = q_train if split == 'train' else q_test
+    annotations = a_train if split == 'train' else a_test 
+    index = torch.randint(0, len(questions) - 1, size=(1,)).item()
+    x = questions[index]
+    y = annotations[index]
     x, y = x.to(device), y.to(device)
     return x, y
+
+xb, yb = get_batch("train")
+print(t.decode(xb.tolist()))
+print(t.decode(yb.tolist()))
 
 model = Transformer(block_size, vocab_size, n_embd, n_layer, n_head, dropout)
 m = model.to(device)
 # print the number of parameters in the model
 print(sum(p.numel() for p in m.parameters())/1e6, 'M parameters')
 
-
 # create a PyTorch optimizer
-optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
-
-for iter in range(max_iters):
-
-    # every once in a while evaluate the loss on train and val sets
-    if iter % eval_interval == 0 or iter == max_iters - 1:
-        losses = estimate_loss()
-        print(f"step {iter}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}")
-
-    # sample a batch of data
-    xb, yb = get_batch('train')
-
-    # evaluate the loss
-    logits, loss = model(xb, yb)
-    optimizer.zero_grad(set_to_none=True)
-    loss.backward()
-    optimizer.step()
-
-# generate from the model
-context = torch.zeros((1, 1), dtype=torch.long, device=device)
-print(t.decode(m.generate(context, max_new_tokens=500)[0].tolist()))
+# optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
+#
+# for iter in range(max_iters):
+#
+#     # every once in a while evaluate the loss on train and val sets
+#     if iter % eval_interval == 0 or iter == max_iters - 1:
+#         losses = estimate_loss()
+#         print(f"step {iter}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}")
+#
+#     # sample a batch of data
+#     xb, yb = get_batch('train')
+#
+#     # evaluate the loss
+#     logits, loss = model(xb, yb)
+#     optimizer.zero_grad(set_to_none=True)
+#     loss.backward()
+#     optimizer.step()
+#
+# # generate from the model
+# context = torch.zeros((1, 1), dtype=torch.long, device=device)
+# print(t.decode(m.generate(context, max_new_tokens=500)[0].tolist()))
