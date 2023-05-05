@@ -65,15 +65,12 @@ def get_batch(split):
     # generate a small batch of data of inputs x and targets y
     questions = q_train if split == 'train' else q_test
     annotations = a_train if split == 'train' else a_test 
-    index = torch.randint(0, len(questions) - 1, size=(1,)).item()
-    x = questions[index]
-    y = annotations[index]
-    x, y = x.to(device), y.to(device)
+    ix = torch.randint(len(questions) - block_size, (batch_size,))
+    x = [questions[i] for i in ix]
+    y = [annotations[i] for i in ix]
     return x, y
 
 xb, yb = get_batch("train")
-print(t.decode(xb.tolist()))
-print(t.decode(yb.tolist()))
 
 model = Transformer(block_size, vocab_size, n_embd, n_layer, n_head, dropout)
 m = model.to(device)
