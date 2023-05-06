@@ -1,5 +1,7 @@
 import re
+
 import pandas as pd
+
 
 class Tokenizer:
     def __init__(self):
@@ -8,10 +10,10 @@ class Tokenizer:
         self.vocab = []
 
     def pretokenize(self, text):
-        text = text.lower() # all lowercase
-        text = re.sub(r'[^a-z0-9\s.?!]', '', text) # remove weird unicode
-        text = re.sub(r'\s+', ' ', text) # collapse whitespace
-        text = re.sub(r'([.?!])', r' \1 ', text) # add space around ".", "?", "!"
+        text = text.lower()  # all lowercase
+        text = re.sub(r"[^a-z0-9\s.?!]", "", text)  # remove weird unicode
+        text = re.sub(r"\s+", " ", text)  # collapse whitespace
+        text = re.sub(r"([.?!])", r" \1 ", text)  # add space around ".", "?", "!"
         text.rstrip()
         text = ["<start>"] + list(text) + ["<end>"]
         return text
@@ -42,11 +44,13 @@ class Tokenizer:
     def train(self, corpus, vocab_size=1000):
         if self.__trained:
             raise RuntimeError("Already trained!")
-        
+
         # want to keep blocks seperate
-        tokens = [[example for example in block] for block in corpus]
-        self.vocab = list(set([char for block in tokens for example in block for char in example]))
-        
+        tokens = [[self.pretokenize(example) for example in block] for block in corpus]
+        self.vocab = list(
+            set([char for block in tokens for example in block for char in example])
+        )
+
         # merge most common pair for vocab num_merges times
         for _ in range(vocab_size - len(self.vocab)):
             pair = self.__get_most_frequent_pair(tokens)
@@ -55,7 +59,7 @@ class Tokenizer:
 
             token_new = "".join(pair)
             self.__merges.append(pair)
-           
+
             # replace seperated tokens with new_merged token for each block of "tokens"
             updated_tokens = []
             for block in tokens:
@@ -76,12 +80,14 @@ class Tokenizer:
                 if not skip_next:
                     updated_block.append(example[-1])
                 updated_tokens.append(updated_block)
-            
-            #update tokens and vocab
+
+            # update tokens and vocab
             tokens = updated_tokens
             self.vocab.append(token_new)
 
         self.vocab = sorted(self.vocab)
+        self.vocab.insert(0, self.vocab.pop(self.vocab.index("<start>")))
+        self.vocab.insert(1, self.vocab.pop(self.vocab.index("<end>")))
         self.__trained = True
         return self.__tokens_to_nums(tokens)
 
