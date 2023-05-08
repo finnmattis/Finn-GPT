@@ -106,8 +106,8 @@ class Tokenizer:
                     new_tokens.append(token)
                     i += 1
             tokens = new_tokens
-
-        return self.__tokens_to_nums(tokens)
+        # a bunch of weird list stuff needed because of self.train()
+        return self.__tokens_to_nums([[tokens]])[0][0]
 
     def decode(self, encoded_text):
         decoded = []

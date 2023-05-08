@@ -149,11 +149,11 @@ class DecoderBlock(nn.Module):
         self.ln3 = nn.LayerNorm(n_embd)
         self.ln4 = nn.LayerNorm(n_embd)
 
-    def forward(self, x, y):
-        x = x + self.sa(self.ln1(y))
-        x = x + self.ca(self.ln2(x), self.ln3(y))
-        x = x + self.ffwd(self.ln4(y))
-        return x
+    def forward(self, enc_out, x):
+        x = x + self.sa(self.ln1(x))
+        x = x + self.ca(self.ln2(enc_out), self.ln3(x))
+        x = x + self.ffwd(self.ln4(x))
+        return enc_out
 
 
 class Transformer(nn.Module):
@@ -166,12 +166,10 @@ class Transformer(nn.Module):
         n_head,
         dropout,
         device,
-        dec_start_state,
     ):
         super().__init__()
         self.block_size = block_size  # needed for generate method
         self.device = device
-        self.dec_start_state = dec_start_state
         # each token directly reads off the logits for the next token from a lookup table
         self.encoder_token_embeddings = nn.Embedding(vocab_size, n_embd)
         self.decoder_token_embeddings = nn.Embedding(vocab_size, n_embd)
@@ -208,42 +206,36 @@ class Transformer(nn.Module):
         enc_out = encoder_tok_emb + encoder_pos_emb  # (B,T,C)
         enc_out = self.encoder_blocks(enc_out)
 
-        # decoder side:
-        B, T = self.dec_start_state.shape
+        # decoder side (autoregressive):
+        B, T, C = enc_out.shape
+        decoder_context = torch.zeros((B, 1), dtype=torch.long, device=self.device)
+        loss = 0
+        num_tokens_to_predict = targets.shape[1] if targets is not None else 20
 
-        decoder_tok_emb = self.decoder_token_embeddings(self.dec_start_state)
-        decoder_pos_emb = self.decoder_position_embeddings(
-            torch.arange(T, device=self.device)
-        )
-        dec_out = decoder_tok_emb + decoder_pos_emb
+        for i in range(num_tokens_to_predict):
+            decoder_tok_emb = self.decoder_token_embeddings(decoder_context)
+            decoder_pos_emb = self.decoder_position_embeddings(
+                torch.arange(decoder_context.shape[1], device=self.device)
+            )
+            dec_emb = decoder_tok_emb + decoder_pos_emb
 
-        for decoder_block in self.decoder_blocks:
-            dec_out = decoder_block(enc_out, dec_out)
-        dec_out = self.ln_f(enc_out)
-        logits = self.lm_head(enc_out)
-        if targets is None:
-            loss = None
-        else:
-            B, T, C = logits.shape
-            logits = logits.view(B * T, C)
-            targets = targets.view(B * T)
-            loss = F.cross_entropy(logits, targets)
+            dec_block_out = dec_emb
+            for decoder_block in self.decoder_blocks:
+                dec_block_out = decoder_block(enc_out, dec_block_out)
+            dec_ln_out = self.ln_f(dec_block_out)
+            logits = self.lm_head(dec_ln_out)
 
-        return logits, loss
+            # Compute the loss for the current token
+            if targets is not None:
+                curr_loss = F.cross_entropy(logits[:, -1, :], targets[:, i])
+                loss += curr_loss
 
-    def generate(self, idx, max_new_tokens):
-        # idx is (B, T) array of indices in the current context
-        for _ in range(max_new_tokens):
-            # crop idx to the last block_size tokens
-            idx_cond = idx[:, -self.block_size :]
-            # get the predictions
-            logits, loss = self(idx_cond)
-            # focus only on the last time step
-            logits = logits[:, -1, :]  # becomes (B, C)
-            # apply softmax to get probabilities
-            probs = F.softmax(logits, dim=-1)  # (B, C)
-            # sample from the distribution
-            idx_next = torch.multinomial(probs, num_samples=1)  # (B, 1)
-            # append sampled index to the running sequence
-            idx = torch.cat((idx, idx_next), dim=1)  # (B, T+1)
-        return idx
+            # Update the decoder context by appending the ground truth token (teacher forcing)
+            next_token = torch.argmax(logits[:, -1, :], dim=-1).unsqueeze(-1)
+            decoder_context = torch.cat([decoder_context, next_token], dim=1)
+            if targets is not None:
+                print(i, targets.shape[1])
+
+        # Divide the accumulated loss by the number of tokens to get the average loss per token
+        loss /= num_tokens_to_predict
+        return decoder_context, loss
