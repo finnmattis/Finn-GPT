@@ -100,13 +100,15 @@ print(sum(p.numel() for p in m.parameters()) / 1e6, "M parameters")
 # create a PyTorch optimizer
 optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
 
+# small test:
 text = t.encode("HI")
 text = torch.tensor(text, dtype=torch.long)
 text = F.pad(text, (0, max(0, block_size - len(text))), mode="constant", value=0)
 text = text.unsqueeze(0)
 logits, _ = model(text)
 logits = logits.tolist()[0]
-print(t.decode(logits))
+
+
 for _ in range(1):
     # every once in a while evaluate the loss on train and val sets
     # if iter % eval_interval == 0 or iter == max_iters - 1:

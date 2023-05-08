@@ -153,7 +153,7 @@ class DecoderBlock(nn.Module):
         x = x + self.sa(self.ln1(x))
         x = x + self.ca(self.ln2(enc_out), self.ln3(x))
         x = x + self.ffwd(self.ln4(x))
-        return enc_out
+        return x
 
 
 class Transformer(nn.Module):
@@ -213,26 +213,29 @@ class Transformer(nn.Module):
         num_tokens_to_predict = targets.shape[1] if targets is not None else 20
 
         for i in range(num_tokens_to_predict):
-            decoder_tok_emb = self.decoder_token_embeddings(decoder_context)
+            decoder_tok_emb = self.decoder_token_embeddings(
+                decoder_context
+            )  # (B, T, C)
             decoder_pos_emb = self.decoder_position_embeddings(
                 torch.arange(decoder_context.shape[1], device=self.device)
-            )
-            dec_emb = decoder_tok_emb + decoder_pos_emb
+            )  # (T, C)
+            dec_emb = decoder_tok_emb + decoder_pos_emb  # (B, T, C)
 
             dec_block_out = dec_emb
             for decoder_block in self.decoder_blocks:
-                dec_block_out = decoder_block(enc_out, dec_block_out)
-            dec_ln_out = self.ln_f(dec_block_out)
-            logits = self.lm_head(dec_ln_out)
+                dec_block_out = decoder_block(enc_out, dec_block_out)  # (B, T, C)
+            dec_ln_out = self.ln_f(dec_block_out)  # (B, T, C)
+            logits = self.lm_head(dec_ln_out)  # (B, T, C)
 
             # Compute the loss for the current token
             if targets is not None:
                 curr_loss = F.cross_entropy(logits[:, -1, :], targets[:, i])
                 loss += curr_loss
 
-            # Update the decoder context by appending the ground truth token (teacher forcing)
+            # Update the decoder context
             next_token = torch.argmax(logits[:, -1, :], dim=-1).unsqueeze(-1)
             decoder_context = torch.cat([decoder_context, next_token], dim=1)
+            # i get bored easily:
             if targets is not None:
                 print(i, targets.shape[1])
 
