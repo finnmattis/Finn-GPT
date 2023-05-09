@@ -46,11 +46,11 @@ class CrossAttentionHead(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
     # keys and values come from encoder, queries come from decoder
-    def forward(self, x, y):
+    def forward(self, enc_out, x):
         # input of size (batch, time-step, channels)
         # output of size (batch, time-step, head size)
-        k = self.key(x)  # (B,T,hs)
-        q = self.query(y)  # (B,T,hs)
+        k = self.key(enc_out)  # (B,T,hs)
+        q = self.query(x)  # (B,T,hs)
         # compute attention scores ("affinities")
         wei = (
             q @ k.transpose(-2, -1) * k.shape[-1] ** -0.5
@@ -58,7 +58,7 @@ class CrossAttentionHead(nn.Module):
         wei = F.softmax(wei, dim=-1)  # (B, T, T)
         wei = self.dropout(wei)
         # perform the weighted aggregation of the values
-        v = self.value(x)  # (B,T,hs)
+        v = self.value(enc_out)  # (B,T,hs)
         out = wei @ v  # (B, T, T) @ (B, T, hs) -> (B, T, hs)
         return out
 
@@ -95,8 +95,8 @@ class MultiHeadCrossAttention(nn.Module):
         self.proj = nn.Linear(head_size * num_heads, n_embd)
         self.dropout = nn.Dropout(dropout)
 
-    def forward(self, x, y):
-        out = torch.cat([h(x, y) for h in self.heads], dim=-1)
+    def forward(self, enc_out, x):
+        out = torch.cat([h(enc_out, x) for h in self.heads], dim=-1)
         out = self.dropout(self.proj(out))
         return out
 
@@ -127,8 +127,10 @@ class EncoderBlock(nn.Module):
         self.ln2 = nn.LayerNorm(n_embd)
 
     def forward(self, x):
-        x = x + self.sa(self.ln1(x))
-        x = x + self.ffwd(self.ln2(x))
+        x = x + self.sa(x)
+        x = self.ln1(x)
+        x = x + self.ffwd(x)
+        x = self.ln2(x)
         return x
 
 
@@ -147,12 +149,11 @@ class DecoderBlock(nn.Module):
         self.ln1 = nn.LayerNorm(n_embd)
         self.ln2 = nn.LayerNorm(n_embd)
         self.ln3 = nn.LayerNorm(n_embd)
-        self.ln4 = nn.LayerNorm(n_embd)
 
     def forward(self, enc_out, x):
-        x = x + self.sa(self.ln1(x))
-        x = x + self.ca(self.ln2(enc_out), self.ln3(x))
-        x = x + self.ffwd(self.ln4(x))
+        x = x + self.sa(x)
+        x = x + self.ca(self.ln1(enc_out), self.ln2(x))
+        x = x + self.ffwd(self.ln3(x))
         return x
 
 
@@ -235,7 +236,7 @@ class Transformer(nn.Module):
             # Update the decoder context
             next_token = torch.argmax(logits[:, -1, :], dim=-1).unsqueeze(-1)
             decoder_context = torch.cat([decoder_context, next_token], dim=1)
-            # i get bored easily:
+
             if targets is not None:
                 print(i, targets.shape[1])
 
