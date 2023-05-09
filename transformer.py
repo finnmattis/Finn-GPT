@@ -1,3 +1,7 @@
+import os
+import sys
+
+import psutil
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -236,9 +240,6 @@ class Transformer(nn.Module):
             # Update the decoder context
             next_token = torch.argmax(logits[:, -1, :], dim=-1).unsqueeze(-1)
             decoder_context = torch.cat([decoder_context, next_token], dim=1)
-
-            if targets is not None:
-                print(i, targets.shape[1])
 
         # Divide the accumulated loss by the number of tokens to get the average loss per token
         loss /= num_tokens_to_predict

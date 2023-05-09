@@ -1,4 +1,0 @@
-token_embedding_table is for inputs through encoder - block_size should be changed to a max_len variable
-needs to be set of token embedding table for outputs/decoder - this one should use block_size
-
-

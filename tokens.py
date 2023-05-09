@@ -110,7 +110,11 @@ class Tokenizer:
         return self.__tokens_to_nums([[tokens]])[0][0]
 
     def decode(self, encoded_text):
+        if encoded_text[0] != 0:
+            raise RuntimeError("First token is not \"<start>\"")
+        
         decoded = []
-        for token in encoded_text:
+        for token in encoded_text[1:]:
             decoded.append(self.vocab[token])
+
         return "".join(decoded)

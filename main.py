@@ -10,7 +10,7 @@ from transformer import Transformer
 # hyperparameters
 device = "cuda" if torch.cuda.is_available() else "cpu"
 vocab_size = 100
-max_iters = 100
+max_iters = 2
 eval_interval = 10
 learning_rate = 1e-3
 eval_iters = 10
@@ -19,7 +19,7 @@ batch_size = 32  # how many independent sequences will we process in parallel?
 block_size = 115  # what is the maximum context length for predictions?
 n_embd = 200
 n_head = 6
-n_layer = 6
+n_layer = 2
 dropout = 0.2
 dec_start_state = torch.zeros((batch_size, 1), dtype=torch.long)
 
@@ -47,22 +47,6 @@ a_train = a_data[:a_percent]
 q_test = q_data[q_percent:]
 a_test = a_data[a_percent:]
 
-
-@torch.no_grad()
-def estimate_loss():
-    out = {}
-    model.eval()
-    for split in ["train", "val"]:
-        losses = torch.zeros(eval_iters)
-        for k in range(eval_iters):
-            X, Y = get_batch(split)
-            logits, loss = model(X, Y)
-            losses[k] = loss.item()
-        out[split] = losses.mean()
-    model.train()
-    return out
-
-
 def get_batch(split):
     # generate a small batch of data of inputs x and targets y
     questions = q_train if split == "train" else q_test
@@ -89,10 +73,7 @@ def get_batch(split):
     return x, y
 
 
-xb, yb = get_batch("train")
-
 model = Transformer(block_size, vocab_size, n_embd, n_layer, n_head, dropout, device)
-
 m = model.to(device)
 # print the number of parameters in the model
 print(sum(p.numel() for p in m.parameters()) / 1e6, "M parameters")
@@ -100,30 +81,21 @@ print(sum(p.numel() for p in m.parameters()) / 1e6, "M parameters")
 # create a PyTorch optimizer
 optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
 
-
-for _ in range(1):
-    # every onc in a while evaluate the loss on train and val sets
-    # if iter % eval_interval == 0 or iter == max_iters - 1:
-    # losses = estimate_loss()
-    # print(
-    # f"step {iter}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}"
-    # )
-
+for i in range(max_iters):
+    print(f"Batch: {i+1}/{max_iters}")
     # sample a batch of data
     xb, yb = get_batch("train")
-
     # evaluate the loss
     logits, loss = model(xb, yb)
+    # take gradient step
     optimizer.zero_grad(set_to_none=True)
     optimizer.step()
 
-# # generate from the model
-
-# small test:
-text = t.encode("How many seasons of friends?")
-text = torch.tensor(text, dtype=torch.long)
-text = F.pad(text, (0, max(0, block_size - len(text))), mode="constant", value=0)
-text = text.unsqueeze(0)
+# generate from the model
+question = "How many seasons of friends?"
+text = torch.tensor(t.encode(question), dtype=torch.long)
+text = F.pad(
+    text, (0, max(0, block_size - len(text))), mode="constant", value=0
+).unsqueeze(0)
 logits, _ = model(text)
-logits = logits.tolist()[0]
-print(t.decode(logits))
+print(f"{question}: {t.decode(logits.tolist()[0])}")
