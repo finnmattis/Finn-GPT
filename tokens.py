@@ -1,3 +1,5 @@
+import json
+import os
 import re
 
 import pandas as pd
@@ -25,7 +27,6 @@ class Tokenizer:
                 for tok1, tok2 in zip(example, example[1:]):
                     pair = (tok1, tok2)
                     pairs[pair] = pairs.get(pair, 0) + 1
-
         return max(pairs, key=pairs.get) if pairs else None
 
     def __tokens_to_nums(self, tokens):
@@ -35,6 +36,10 @@ class Tokenizer:
             for example in block:
                 example_nums = []
                 for token in example:
+                    if token not in self.vocab:
+                        print(block)
+                        print(example)
+                        print(token)
                     example_nums.append(self.vocab.index(token))
                 block_nums.append(example_nums)
             token_nums.append(block_nums)
@@ -48,11 +53,13 @@ class Tokenizer:
         # want to keep blocks seperate
         tokens = [[self.pretokenize(example) for example in block] for block in corpus]
         self.vocab = list(
-            set([char for block in tokens for example in block for char in example])
+            set(char for block in tokens for example in block for char in example)
         )
 
         # merge most common pair for vocab num_merges times
-        for _ in range(vocab_size - len(self.vocab)):
+        for i in range(vocab_size - len(self.vocab)):
+            # if i == 1:
+            # print(tokens)
             pair = self.__get_most_frequent_pair(tokens)
             if not pair:
                 break
@@ -63,24 +70,21 @@ class Tokenizer:
             # replace seperated tokens with new_merged token for each block of "tokens"
             updated_tokens = []
             for block in tokens:
-                for example in tokens:
+                updated_block = []
+                for example in block:
                     skip_next = False
-                    updated_block = []
-                    for tok1, tok2 in zip(block, block[1:]):
+                    updated_example = []
+                    for tok1, tok2 in zip(example, example[1:]):
                         if skip_next:
                             skip_next = False
                             continue
-
                         if tok1 == pair[0] and tok2 == pair[1]:
-                            updated_block.append(token_new)
+                            updated_example.append(token_new)
                             skip_next = True
                         else:
-                            updated_block.append(tok1)
-
-                if not skip_next:
-                    updated_block.append(example[-1])
+                            updated_example.append(tok1)
+                    updated_block.append(updated_example)
                 updated_tokens.append(updated_block)
-
             # update tokens and vocab
             tokens = updated_tokens
             self.vocab.append(token_new)
@@ -88,6 +92,7 @@ class Tokenizer:
         self.vocab = sorted(self.vocab)
         self.vocab.insert(0, self.vocab.pop(self.vocab.index("<start>")))
         self.vocab.insert(1, self.vocab.pop(self.vocab.index("<end>")))
+
         self.__trained = True
         return self.__tokens_to_nums(tokens)
 
@@ -111,10 +116,25 @@ class Tokenizer:
 
     def decode(self, encoded_text):
         if encoded_text[0] != 0:
-            raise RuntimeError("First token is not \"<start>\"")
-        
+            raise RuntimeError('First token is not "<start>"')
+
         decoded = []
-        for token in encoded_text[1:]:
+        for token in encoded_text[1:-1]:
             decoded.append(self.vocab[token])
 
         return "".join(decoded)
+
+    def save_state(self, path):
+        with open(path, "w") as file:
+            json.dump({"vocab": self.vocab, "merges": self.__merges}, file)
+
+    def load_state(self, path):
+        with open(path, "r") as file:
+            data = json.load(file)
+            if not len(data) == 2 or "vocab" not in data or "merges" not in data:
+                raise RuntimeError(
+                    'Data not foratted properly! Should have "vocab" and "merges"'
+                )
+            self.vocab = data["vocab"]
+            self.__merges = data["merges"]
+            self.__trained = True

@@ -4,24 +4,9 @@ import torch.nn as nn
 from torch.nn import functional as F
 from torch.nn.utils.rnn import pad_sequence
 
+from hyperparameters import HYPERPARAMETERS as HP
 from tokens import Tokenizer
 from transformer import Transformer
-
-# hyperparameters
-device = "cuda" if torch.cuda.is_available() else "cpu"
-vocab_size = 100
-max_iters = 2
-eval_interval = 10
-learning_rate = 1e-3
-eval_iters = 10
-train_percent = 0.9
-batch_size = 32  # how many independent sequences will we process in parallel?
-block_size = 115  # what is the maximum context length for predictions?
-n_embd = 200
-n_head = 6
-n_layer = 2
-dropout = 0.2
-dec_start_state = torch.zeros((batch_size, 1), dtype=torch.long)
 
 # read from json
 df = pd.read_json("data.json")
@@ -31,7 +16,8 @@ annotations = df["annotations"].apply(lambda x: x[0]["answer"][0])
 
 # BPE encoding
 t = Tokenizer()
-encoded_corpus = t.train([questions, annotations], vocab_size)
+encoded_corpus = t.train([questions, annotations], HP["vocab_size"])
+t.save_state("artifacts/bpe.json")
 
 q_toks = encoded_corpus[0]
 a_toks = encoded_corpus[1]
@@ -39,50 +25,59 @@ q_data = [torch.tensor(tokens, dtype=torch.long) for tokens in q_toks]
 a_data = [torch.tensor(tokens, dtype=torch.long) for tokens in a_toks]
 
 # train/test split
-q_percent = int(train_percent * len(q_data))
-a_percent = int(train_percent * len(a_data))
+q_percent = int(HP["train_percent"] * len(q_data))
+a_percent = int(HP["train_percent"] * len(a_data))
 
 q_train = q_data[:q_percent]
 a_train = a_data[:a_percent]
 q_test = q_data[q_percent:]
 a_test = a_data[a_percent:]
 
+
 def get_batch(split):
     # generate a small batch of data of inputs x and targets y
     questions = q_train if split == "train" else q_test
     annotations = a_train if split == "train" else a_test
 
-    ix = torch.randint(len(questions) - block_size, (batch_size,))
+    ix = torch.randint(len(questions) - HP["block_size"], (HP["batch_size"],))
     x = [questions[i] for i in ix]
     y = [annotations[i] for i in ix]
 
     x = torch.stack(
         [
-            F.pad(i, (0, max(0, block_size - len(i))), mode="constant", value=0)
+            F.pad(i, (0, max(0, HP["block_size"] - len(i))), mode="constant", value=0)
             for i in x
         ]
     )
     y = torch.stack(
         [
-            F.pad(i, (0, max(0, block_size - len(i))), mode="constant", value=0)
+            F.pad(i, (0, max(0, HP["block_size"] - len(i))), mode="constant", value=0)
             for i in y
         ]
     )
     x, y = x.long(), y.long()
-    x, y = x.to(device), y.to(device)
+    x, y = x.to(HP["device"]), y.to(HP["device"])
     return x, y
 
 
-model = Transformer(block_size, vocab_size, n_embd, n_layer, n_head, dropout, device)
-m = model.to(device)
+model = Transformer(
+    HP["block_size"],
+    HP["vocab_size"],
+    HP["n_embd"],
+    HP["n_layer"],
+    HP["n_head"],
+    HP["dropout"],
+    HP["device"],
+)
+m = model.to(HP["device"])
 # print the number of parameters in the model
 print(sum(p.numel() for p in m.parameters()) / 1e6, "M parameters")
 
 # create a PyTorch optimizer
-optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
+optimizer = torch.optim.AdamW(model.parameters(), lr=HP["learning_rate"])
 
-for i in range(max_iters):
-    print(f"Batch: {i+1}/{max_iters}")
+for i in range(HP["max_iters"]):
+    print(f"Batch: {i+1}/{HP['max_iters']}")
     # sample a batch of data
     xb, yb = get_batch("train")
     # evaluate the loss
@@ -91,11 +86,6 @@ for i in range(max_iters):
     optimizer.zero_grad(set_to_none=True)
     optimizer.step()
 
+# save state
+torch.save(model.state_dict(), "artifacts/checkpoint.pth")
 # generate from the model
-question = "How many seasons of friends?"
-text = torch.tensor(t.encode(question), dtype=torch.long)
-text = F.pad(
-    text, (0, max(0, block_size - len(text))), mode="constant", value=0
-).unsqueeze(0)
-logits, _ = model(text)
-print(f"{question}: {t.decode(logits.tolist()[0])}")
