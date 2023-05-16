@@ -82,6 +82,7 @@ for i in range(HP["max_iters"]):
     xb, yb = get_batch("train")
     # evaluate the loss
     logits, loss = model(xb, yb)
+    print(f"Loss: {loss}")
     # take gradient step
     optimizer.zero_grad(set_to_none=True)
     optimizer.step()
