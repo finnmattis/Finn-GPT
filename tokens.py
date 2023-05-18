@@ -25,6 +25,9 @@ class Tokenizer:
         for block in tokens:
             for example in block:
                 for tok1, tok2 in zip(example, example[1:]):
+                    # Don't want any pairs with start b.c. start is provided by me - the model should not be able to generate start in the middle
+                    if tok1 == "<start>":
+                        continue
                     pair = (tok1, tok2)
                     pairs[pair] = pairs.get(pair, 0) + 1
         return max(pairs, key=pairs.get) if pairs else None
@@ -36,10 +39,6 @@ class Tokenizer:
             for example in block:
                 example_nums = []
                 for token in example:
-                    if token not in self.vocab:
-                        print(block)
-                        print(example)
-                        print(token)
                     example_nums.append(self.vocab.index(token))
                 block_nums.append(example_nums)
             token_nums.append(block_nums)
@@ -57,9 +56,7 @@ class Tokenizer:
         )
 
         # merge most common pair for vocab num_merges times
-        for i in range(vocab_size - len(self.vocab)):
-            # if i == 1:
-            # print(tokens)
+        for _ in range(vocab_size - len(self.vocab)):
             pair = self.__get_most_frequent_pair(tokens)
             if not pair:
                 break

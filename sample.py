@@ -25,10 +25,10 @@ app = Flask(__name__)
 
 @app.route("/response/<question>", methods=["GET"])
 def get_data(question):
-    return jsonify({"response": get_reponse(question)})
+    return jsonify({"response": get_response(question)})
 
 
-def get_reponse(question):
+def get_response(question):
     text = torch.tensor(t.encode(question), dtype=torch.long)
     text = F.pad(
         text, (0, max(0, HP["block_size"] - len(text))), mode="constant", value=0
@@ -39,4 +39,5 @@ def get_reponse(question):
 
 
 if __name__ == "__main__":
-    app.run()
+    get_response("What year was I born?")
+    # app.run()

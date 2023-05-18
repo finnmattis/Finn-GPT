@@ -11,6 +11,7 @@ from transformer import Transformer
 # read from json
 df = pd.read_json("data.json")
 df = df[[x[0].get("type") == "singleAnswer" for x in df["annotations"]]]
+df = df[df["annotations"].apply(lambda x: len(x[0]["answer"][0]) < 50)]
 questions = df["question"]
 annotations = df["annotations"].apply(lambda x: x[0]["answer"][0])
 

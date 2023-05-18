@@ -175,18 +175,24 @@ class Transformer(nn.Module):
         self.block_size = block_size  # needed for generate method
         self.device = device
         # each token directly reads off the logits for the next token from a lookup table
-        self.encoder_token_embeddings = nn.Embedding(vocab_size, n_embd)
-        self.decoder_token_embeddings = nn.Embedding(vocab_size, n_embd)
-        self.encoder_position_embeddings = nn.Embedding(block_size, n_embd)
-        self.decoder_position_embeddings = nn.Embedding(block_size, n_embd)
+        self.encoder_token_embeddings = nn.Embedding(vocab_size, n_embd).to(device)
+        self.decoder_token_embeddings = nn.Embedding(vocab_size, n_embd).to(device)
+        self.encoder_position_embeddings = nn.Embedding(block_size, n_embd).to(device)
+        self.decoder_position_embeddings = nn.Embedding(block_size, n_embd).to(device)
         self.encoder_blocks = nn.Sequential(
-            *[EncoderBlock(block_size, n_embd, n_head, dropout) for _ in range(n_layer)]
+            *[
+                EncoderBlock(block_size, n_embd, n_head, dropout).to(device)
+                for _ in range(n_layer)
+            ]
         )
         self.decoder_blocks = [
-            DecoderBlock(block_size, n_embd, n_head, dropout) for _ in range(n_layer)
+            DecoderBlock(block_size, n_embd, n_head, dropout).to(device)
+            for _ in range(n_layer)
         ]
-        self.ln_f = nn.LayerNorm(n_embd)  # final layer norm
-        self.lm_head = nn.Linear(n_embd, vocab_size)
+        self.ln_f = nn.LayerNorm(n_embd).to(device)  # final layer norm
+        self.lm_head = nn.Linear(n_embd, vocab_size - 1).to(
+            device
+        )  # vocab_size - 1 because it can't be <start> token
 
         self.apply(self._init_weights)
 
@@ -214,7 +220,7 @@ class Transformer(nn.Module):
         B, T, C = enc_out.shape
         decoder_context = torch.zeros((B, 1), dtype=torch.long, device=self.device)
         loss = 0
-        num_tokens_to_predict = targets.shape[1] if targets is not None else 20
+        num_tokens_to_predict = targets.shape[1] if targets is not None else 50
 
         for i in range(num_tokens_to_predict):
             decoder_tok_emb = self.decoder_token_embeddings(
@@ -236,8 +242,14 @@ class Transformer(nn.Module):
                 curr_loss = F.cross_entropy(logits[:, -1, :], targets[:, i])
                 loss += curr_loss
 
-            # Update the decoder context
+            # Predict next token
             next_token = torch.argmax(logits[:, -1, :], dim=-1).unsqueeze(-1)
+            # Shift tokens to the right b.c. don't want start in the middle
+            next_token = torch.add(next_token, 1)
+            # Break from loop on <end> token during sampling
+            if targets is None and next_token.item() == 1:
+                break
+            # Update decoder context
             decoder_context = torch.cat([decoder_context, next_token], dim=1)
 
         # Divide the accumulated loss by the number of tokens to get the average loss per token
