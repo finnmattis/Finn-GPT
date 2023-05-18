@@ -3,7 +3,7 @@ import torch
 # DEVICE = xm.xla_device()
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 VOCAB_SIZE = 100
-MAX_ITERS = 25
+MAX_ITERS = 50
 EVAL_INTERVAL = 10
 LEARNING_RATE = 1e-3
 EVAL_ITERS = 10
@@ -12,7 +12,7 @@ BATCH_SIZE = 32  # how many independent sequences will we process in parallel?
 BLOCK_SIZE = 50  # what is the maximum context length for predictions?
 N_EMBD = 200
 N_HEAD = 6
-N_LAYER = 2
+N_LAYER = 6
 DROPOUT = 0.2
 
 HYPERPARAMETERS = {

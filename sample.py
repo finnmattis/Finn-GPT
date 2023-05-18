@@ -39,5 +39,5 @@ def get_response(question):
 
 
 if __name__ == "__main__":
-    get_response("What year was I born?")
+    get_response("When was Trump elected?")
     # app.run()
